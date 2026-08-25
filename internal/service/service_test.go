@@ -97,6 +97,57 @@ func TestAddPremiseRejectsSelfReference(t *testing.T) {
 	}
 }
 
+// TestAddPremiseRejectsCrossDraftSource 断言来源步骤、来源引理与目标步骤必须同属
+// 目标草稿：把别处草稿的步骤或引理当作前提写入当前草稿的图，应被拒绝且不落库。
+func TestAddPremiseRejectsCrossDraftSource(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+
+	target, err := svc.CreateDraft("target", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetSteps, err := svc.ImportSteps(target.ID, "1 needs external => result")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	other, err := svc.CreateDraft("other", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSteps, err := svc.ImportSteps(other.ID, "1 foreign => foreign")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherLemma, err := svc.CreateLemma(other.ID, "foreign-lemma", "from another draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 来源步骤来自别处草稿：必须拒绝。
+	if err := svc.AddPremise(target.ID, otherSteps[0].ID, "step", targetSteps[0].ID, true); err == nil {
+		t.Fatal("expected cross-draft step source rejection")
+	}
+	// 来源引理来自别处草稿：必须拒绝。
+	if err := svc.AddPremise(target.ID, otherLemma.ID, "lemma", targetSteps[0].ID, true); err == nil {
+		t.Fatal("expected cross-draft lemma source rejection")
+	}
+	// 目标步骤来自别处草稿：必须拒绝。
+	if err := svc.AddPremise(target.ID, targetSteps[0].ID, "step", otherSteps[0].ID, true); err == nil {
+		t.Fatal("expected cross-draft target step rejection")
+	}
+
+	// 任何跨草稿前提都不应进入目标草稿的图。
+	edges, err := svc.Store().ListEdges(target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edges) != 0 {
+		t.Fatalf("cross-draft premise was persisted: %#v", edges)
+	}
+}
+
 func TestFrozenDraftRejectsWrites(t *testing.T) {
 	svc, cleanup := newTestService(t)
 	defer cleanup()

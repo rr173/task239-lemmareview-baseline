@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"task239-lemmareview/internal/model"
 )
 
 func (s *Server) handlePremises(w http.ResponseWriter, r *http.Request) {
@@ -33,13 +31,7 @@ func (s *Server) handlePremises(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, err)
 			return
 		}
-		if err := s.svc.Store().CreateEdge(&model.PremiseEdge{
-			DraftID:  id,
-			FromKind: body.FromKind,
-			FromID:   body.FromID,
-			ToStepID: body.ToStepID,
-			Required: body.Required,
-		}); err != nil {
+		if err := s.svc.AddPremise(id, body.FromID, body.FromKind, body.ToStepID, body.Required); err != nil {
 			writeError(w, 400, err)
 			return
 		}

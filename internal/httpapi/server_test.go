@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -85,3 +87,68 @@ func TestLemmaStatusEndpointMakesCandidateAvailable(t *testing.T) {
 		t.Fatalf("lemma was not made available: %#v err=%v", updated, err)
 	}
 }
+
+// TestPremisesEndpointRejectsCrossDraftSource 断言 POST /api/drafts/{id}/premises
+// 不会把来自其他草稿的步骤/引理前提写入当前草稿的图，而是返回错误。
+func TestPremisesEndpointRejectsCrossDraftSource(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "premises.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	svc := service.New(st)
+
+	target, err := svc.CreateDraft("target", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetSteps, err := svc.ImportSteps(target.ID, "1 needs external => result")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := svc.CreateDraft("other", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSteps, err := svc.ImportSteps(other.ID, "1 foreign => foreign")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherLemma, err := svc.CreateLemma(other.ID, "foreign-lemma", "from another draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := New(svc, ":0", "").Handler()
+	targetDraft := "/api/drafts/" + strconv.FormatInt(target.ID, 10) + "/premises"
+	targetStepID := targetSteps[0].ID
+	otherStepID := otherSteps[0].ID
+	otherLemmaID := otherLemma.ID
+
+	post := func(body string) *httptest.ResponseRecorder {
+		resp := httptest.NewRecorder()
+		h.ServeHTTP(resp, httptest.NewRequest(http.MethodPost, targetDraft, strings.NewReader(body)))
+		return resp
+	}
+
+	// 来源步骤来自别处草稿。
+	resp := post(fmt.Sprintf(`{"from_kind":"step","from_id":%d,"to_step_id":%d,"required":true}`, otherStepID, targetStepID))
+	if resp.Code == http.StatusCreated {
+		t.Fatalf("cross-draft step premise was accepted: %s", resp.Body.String())
+	}
+
+	// 来源引理来自别处草稿。
+	resp = post(fmt.Sprintf(`{"from_kind":"lemma","from_id":%d,"to_step_id":%d,"required":true}`, otherLemmaID, targetStepID))
+	if resp.Code == http.StatusCreated {
+		t.Fatalf("cross-draft lemma premise was accepted: %s", resp.Body.String())
+	}
+
+	// 目标草稿的图必须保持为空。
+	edges, err := svc.Store().ListEdges(target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edges) != 0 {
+		t.Fatalf("cross-draft premise persisted via API: %#v", edges)
+	}
+}
+

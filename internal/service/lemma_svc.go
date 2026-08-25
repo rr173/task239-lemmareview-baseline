@@ -81,7 +81,9 @@ func (s *Service) ReplaceLemma(oldID, newDraftID int64, newName, newStatement st
 	return s.store.ReplaceLemma(oldID, newName, newStatement)
 }
 
-// AddPremise 新增前提依赖：校验非自指、已知引理、顺序合法。
+// AddPremise 新增前提依赖：校验草稿未冻结、来源与目标同属一草稿、非自指、
+// 来源引理已知。推导顺序合法性交由依赖图的循环检测处理，不在写入时硬性拦截
+// （否则将禁止构造需要回边的循环用例）。
 func (s *Service) AddPremise(draftID, fromKindID int64, fromKind string, toStepID int64, required bool) error {
 	frozen, err := s.store.IsDraftFrozen(draftID)
 	if err != nil {
@@ -89,6 +91,42 @@ func (s *Service) AddPremise(draftID, fromKindID int64, fromKind string, toStepI
 	}
 	if frozen {
 		return model.ErrFrozenWrite
+	}
+	if fromKind == "" {
+		fromKind = "lemma"
+	}
+	// 目标步骤必须属于该草稿，阻止跨草稿写入依赖方。
+	toStep, err := s.store.GetStep(toStepID)
+	if err != nil {
+		return err
+	}
+	if toStep.DraftID != draftID {
+		return model.ErrStepNotFound
+	}
+	switch fromKind {
+	case "step":
+		// 来源步骤必须属于同一草稿；步骤不能依赖自身结论（自指）。
+		if fromKindID == toStepID {
+			return model.ErrSelfPremise
+		}
+		fromStep, err := s.store.GetStep(fromKindID)
+		if err != nil {
+			return err
+		}
+		if fromStep.DraftID != draftID {
+			return model.ErrStepNotFound
+		}
+	case "lemma":
+		// 来源引理必须存在且属于同一草稿（已知引理），阻止跨草稿引理前提。
+		fromLemma, err := s.store.GetLemma(fromKindID)
+		if err != nil {
+			return model.ErrUnknownLemma
+		}
+		if fromLemma.DraftID != draftID {
+			return model.ErrUnknownLemma
+		}
+	default:
+		return fmt.Errorf("invalid from_kind %q: want \"step\" or \"lemma\"", fromKind)
 	}
 	return s.store.CreateEdge(&model.PremiseEdge{
 		DraftID:  draftID,
