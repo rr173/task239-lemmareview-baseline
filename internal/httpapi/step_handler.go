@@ -47,7 +47,7 @@ func (s *Server) handleStepByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, fmt.Errorf("bad path"))
 		return
 	}
-	sid, err := strconv.ParseInt(parts[3], 10, 64)
+	sid, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 	if err != nil {
 		writeError(w, 400, err)
 		return
