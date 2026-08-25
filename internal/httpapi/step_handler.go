@@ -54,7 +54,12 @@ func (s *Server) handleStepByID(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		st, err := s.svc.Store().GetStep(sid)
+		draftID, err := parseID(r.URL.Path, "/api/drafts/")
+		if err != nil {
+			writeError(w, 400, err)
+			return
+		}
+		st, err := s.svc.GetStep(draftID, sid)
 		if err != nil {
 			writeError(w, 404, err)
 			return

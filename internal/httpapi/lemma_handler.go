@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"task239-lemmareview/internal/model"
 )
 
 func (s *Server) handleLemmas(w http.ResponseWriter, r *http.Request) {
@@ -72,4 +74,34 @@ func (s *Server) handleReplaceLemma(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, l)
+}
+
+func (s *Server) handleLemmaStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 4 {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("bad path"))
+		return
+	}
+	lid, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var body struct {
+		DraftID int64             `json:"draft_id"`
+		Status  model.LemmaStatus `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.svc.SetLemmaStatus(body.DraftID, lid, body.Status); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": string(body.Status)})
 }

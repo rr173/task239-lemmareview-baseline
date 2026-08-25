@@ -43,6 +43,25 @@ func (s *Service) GetLemma(draftID, lemmaID int64) (*model.Lemma, error) {
 	return lemma, nil
 }
 
+// SetLemmaStatus 更新引理可用性，仅允许草稿内的候选引理被标记为可用或失效。
+func (s *Service) SetLemmaStatus(draftID, lemmaID int64, status model.LemmaStatus) error {
+	lemma, err := s.GetLemma(draftID, lemmaID)
+	if err != nil {
+		return err
+	}
+	frozen, err := s.store.IsDraftFrozen(draftID)
+	if err != nil {
+		return err
+	}
+	if frozen {
+		return model.ErrFrozenWrite
+	}
+	if lemma.Status != model.LemmaCandidate || (status != model.LemmaAvailable && status != model.LemmaInvalid) {
+		return model.ErrInvalidStatus
+	}
+	return s.store.UpdateLemmaStatus(lemmaID, status)
+}
+
 // ReplaceLemma 替换引理：标记旧引理为 replaced，新引理为 available。
 func (s *Service) ReplaceLemma(oldID, newDraftID int64, newName, newStatement string) (*model.Lemma, error) {
 	old, err := s.store.GetLemma(oldID)
@@ -55,6 +74,9 @@ func (s *Service) ReplaceLemma(oldID, newDraftID int64, newName, newStatement st
 	}
 	if frozen {
 		return nil, model.ErrFrozenWrite
+	}
+	if newDraftID != old.DraftID || newName == "" {
+		return nil, model.ErrInvalidStatus
 	}
 	if err := s.store.UpdateLemmaStatus(oldID, model.LemmaReplaced); err != nil {
 		return nil, err

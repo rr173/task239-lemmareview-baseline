@@ -49,20 +49,30 @@ func (s *Service) Analyze(draftID int64) (*model.CoverageResult, error) {
 
 	// 同步步骤状态
 	for _, sid := range res.CoveredSteps {
-		_ = s.store.SetStepStatus(sid, model.StepCovered)
+		if err := s.store.SetStepStatus(sid, model.StepCovered); err != nil {
+			return nil, err
+		}
 	}
 	for _, sid := range res.MissingSteps {
-		_ = s.store.SetStepStatus(sid, model.StepMissing)
+		if err := s.store.SetStepStatus(sid, model.StepMissing); err != nil {
+			return nil, err
+		}
 	}
 	for _, sid := range res.CyclicSteps {
-		_ = s.store.SetStepStatus(sid, model.StepCyclic)
+		if err := s.store.SetStepStatus(sid, model.StepCyclic); err != nil {
+			return nil, err
+		}
 	}
 
 	// 草稿缺口/可发布状态
 	if len(res.MissingSteps) > 0 || len(res.CyclicSteps) > 0 {
-		_ = s.store.UpdateDraftStatus(draftID, model.DraftGap)
+		if err := s.store.UpdateDraftStatus(draftID, model.DraftGap); err != nil {
+			return nil, err
+		}
 	} else {
-		_ = s.store.UpdateDraftStatus(draftID, model.DraftPublishable)
+		if err := s.store.UpdateDraftStatus(draftID, model.DraftPublishable); err != nil {
+			return nil, err
+		}
 	}
 
 	return res, nil

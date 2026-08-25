@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"task239-lemmareview/internal/model"
 	"task239-lemmareview/internal/store"
 )
 
@@ -136,5 +137,45 @@ func TestAnalyzeAppliesCompleteLemmaExemption(t *testing.T) {
 	}
 	if len(res.ExemptedSteps) != 1 || len(res.MissingSteps) != 0 {
 		t.Fatalf("expected one exempted step and no missing steps, got exempted=%v missing=%v", res.ExemptedSteps, res.MissingSteps)
+	}
+}
+
+func TestImportStepsRollsBackDuplicateBatch(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	draft, err := svc.CreateDraft("atomic", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ImportSteps(draft.ID, "1 original => ok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ImportSteps(draft.ID, "2 inserted first => bad\n1 duplicate => should rollback"); err == nil {
+		t.Fatal("expected duplicate label failure")
+	}
+	steps, err := svc.ListSteps(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 1 || steps[0].Label != "1" {
+		t.Fatalf("failed batch left partial steps: %#v", steps)
+	}
+}
+
+func TestDraftStatusCannotLeaveFrozenThroughService(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	draft, err := svc.CreateDraft("frozen-status", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ImportSteps(draft.ID, "1 A => A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.FreezeVersion(draft.ID, "v1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UpdateDraftStatus(draft.ID, model.DraftEditing); err != model.ErrFrozenWrite {
+		t.Fatalf("expected frozen write rejection, got %v", err)
 	}
 }

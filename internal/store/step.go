@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 
 	"task239-lemmareview/internal/model"
 )
@@ -11,18 +12,66 @@ func (s *Store) CreateStep(step *model.Step) (*model.Step, error) {
 	if step.DraftID == 0 {
 		return nil, errDraftRequired
 	}
-	t := nowStr()
 	if step.Status == "" {
 		step.Status = model.StepParsed
 	}
-	res, err := s.db.Exec(
-		`INSERT INTO steps(draft_id,seq,label,statement,conclusion,status,created_at) VALUES(?,?,?,?,?,?,?)`,
-		step.DraftID, step.Seq, step.Label, step.Statement, step.Conclusion, string(step.Status), t)
+	_, err := s.insertStep(s.db, step)
 	if err != nil {
 		return nil, fmtErrInsertStep(err)
 	}
-	id, _ := res.LastInsertId()
-	return s.GetStep(id)
+	return s.GetStep(step.ID)
+}
+
+// CreateSteps 原子写入一个步骤批次，任何一条失败都会回滚整批。
+func (s *Store) CreateSteps(steps []*model.Step) ([]*model.Step, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin step batch: %w", err)
+	}
+	for _, step := range steps {
+		if step.DraftID == 0 {
+			_ = tx.Rollback()
+			return nil, errDraftRequired
+		}
+		if step.Status == "" {
+			step.Status = model.StepParsed
+		}
+		if _, err := s.insertStep(tx, step); err != nil {
+			_ = tx.Rollback()
+			return nil, fmtErrInsertStep(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit step batch: %w", err)
+	}
+	out := make([]*model.Step, 0, len(steps))
+	for _, step := range steps {
+		created, err := s.GetStep(step.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, created)
+	}
+	return out, nil
+}
+
+type stepInserter interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func (s *Store) insertStep(exec stepInserter, step *model.Step) (int64, error) {
+	res, err := exec.Exec(
+		`INSERT INTO steps(draft_id,seq,label,statement,conclusion,status,created_at) VALUES(?,?,?,?,?,?,?)`,
+		step.DraftID, step.Seq, step.Label, step.Statement, step.Conclusion, string(step.Status), nowStr())
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	step.ID = id
+	return id, nil
 }
 
 // GetStep 查询步骤。

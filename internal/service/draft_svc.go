@@ -23,3 +23,18 @@ func (s *Service) GetDraft(id int64) (*model.Draft, error) {
 func (s *Service) ListDrafts() ([]*model.Draft, error) {
 	return s.store.ListDrafts()
 }
+
+// UpdateDraftStatus 按草稿状态机更新状态，冻结后不允许回退。
+func (s *Service) UpdateDraftStatus(id int64, next model.DraftStatus) error {
+	draft, err := s.store.GetDraft(id)
+	if err != nil {
+		return err
+	}
+	if !model.ValidDraftTransition(draft.Status, next) {
+		if draft.Status == model.DraftFrozen {
+			return model.ErrFrozenWrite
+		}
+		return model.ErrInvalidStatus
+	}
+	return s.store.UpdateDraftStatus(id, next)
+}

@@ -147,3 +147,25 @@ func ValidateStepOrder(dependentSeq, requiredSeq int) error {
 	}
 	return nil
 }
+
+// ValidDraftTransition 判断草稿状态机是否允许从 current 进入 next。
+func ValidDraftTransition(current, next DraftStatus) bool {
+	if current == next {
+		return true
+	}
+	if current == DraftFrozen {
+		return false
+	}
+	switch current {
+	case DraftEditing:
+		return next == DraftReviewing
+	case DraftReviewing:
+		return next == DraftGap || next == DraftPublishable
+	case DraftGap:
+		return next == DraftReviewing || next == DraftPublishable
+	case DraftPublishable:
+		return next == DraftReviewing || next == DraftGap || next == DraftFrozen
+	default:
+		return false
+	}
+}

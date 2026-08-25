@@ -42,6 +42,7 @@ CGO_ENABLED=0 GOTOOLCHAIN=local go test ./...
 | 步骤查询 | `GET /api/drafts/{id}/steps/{sid}` | store.GetStep |
 | 步骤前提查询 | `GET /api/drafts/{id}/steps/{sid}/premises` | service.ListStepPremises → store |
 | 引理列表/新建 | `GET/POST /api/drafts/{id}/lemmas` | service.CreateLemma → store |
+| 引理可用性 | `PUT /api/lemmas/{lid}/status` | service.SetLemmaStatus → store |
 | 引理详情 | `GET /api/drafts/{id}/lemmas/{lid}` | service.GetLemma → store |
 | 引理替换 | `POST /api/lemmas/{lid}/replace` | service.ReplaceLemma → store |
 | 前提边列表/新增 | `GET/POST /api/drafts/{id}/premises` | service.AddPremise → store |

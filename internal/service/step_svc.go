@@ -21,9 +21,9 @@ func (s *Service) ImportSteps(draftID int64, text string) ([]*model.Step, error)
 	if err := parse.ValidateLabelsUnique(specs); err != nil {
 		return nil, err
 	}
-	var out []*model.Step
+	steps := make([]*model.Step, 0, len(specs))
 	for _, sp := range specs {
-		st, err := s.store.CreateStep(&model.Step{
+		steps = append(steps, &model.Step{
 			DraftID:    draftID,
 			Seq:        sp.Seq,
 			Label:      sp.Label,
@@ -31,19 +31,33 @@ func (s *Service) ImportSteps(draftID int64, text string) ([]*model.Step, error)
 			Conclusion: sp.Conclusion,
 			Status:     model.StepParsed,
 		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, st)
+	}
+	out, err := s.store.CreateSteps(steps)
+	if err != nil {
+		return nil, err
 	}
 	// 导入后草稿进入待复核
-	_ = s.store.UpdateDraftStatus(draftID, model.DraftReviewing)
+	if err := s.UpdateDraftStatus(draftID, model.DraftReviewing); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // ListSteps 列出步骤。
 func (s *Service) ListSteps(draftID int64) ([]*model.Step, error) {
 	return s.store.ListSteps(draftID)
+}
+
+// GetStep 查询草稿中的单个步骤，阻止跨草稿读取。
+func (s *Service) GetStep(draftID, stepID int64) (*model.Step, error) {
+	step, err := s.store.GetStep(stepID)
+	if err != nil {
+		return nil, err
+	}
+	if step.DraftID != draftID {
+		return nil, model.ErrStepNotFound
+	}
+	return step, nil
 }
 
 // ListStepPremises 查询某步骤的直接前提，并校验步骤属于草稿。

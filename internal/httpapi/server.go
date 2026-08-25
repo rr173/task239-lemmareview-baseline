@@ -38,6 +38,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/drafts/{id}/steps/{sid}", s.handleStepByID) // GET
 	// 引理
 	mux.HandleFunc("/api/drafts/{id}/lemmas", s.handleLemmas)         // GET / POST
+	mux.HandleFunc("/api/lemmas/{lid}/status", s.handleLemmaStatus)   // PUT 可用性
 	mux.HandleFunc("/api/lemmas/{lid}/replace", s.handleReplaceLemma) // POST
 	// 前提边
 	mux.HandleFunc("/api/drafts/{id}/premises", s.handlePremises) // GET / POST
