@@ -2,6 +2,7 @@ package service
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"task239-lemmareview/internal/model"
@@ -212,5 +213,88 @@ func TestReplaceLemmaMigratesPremiseEdges(t *testing.T) {
 	res, err := svc.Analyze(draft.ID)
 	if err != nil || len(res.CoveredSteps) != 1 {
 		t.Fatalf("replacement did not preserve coverage: result=%#v err=%v", res, err)
+	}
+}
+
+// TestConcurrentFreezeHasSingleWinner 验证并发冻结只有一个赢家：
+// 20 个 goroutine 同时冻结同一草稿，最终恰好一个成功版本，其余返回 ErrFrozenWrite，
+// 草稿保持 frozen，且版本表只有一行。
+func TestConcurrentFreezeHasSingleWinner(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+
+	draft, err := svc.CreateDraft("concurrent", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ImportSteps(draft.ID, "1 premise => conclusion"); err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 20
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wins := 0
+	frozenErrs := 0
+	otherErrs := []string{}
+	winVersionIDs := map[int64]bool{}
+	wg.Add(n)
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			<-start // 同时起跑，最大化竞态窗口
+			v, err := svc.FreezeVersion(draft.ID, "v1")
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil {
+				wins++
+				winVersionIDs[v.ID] = true
+				return
+			}
+			if err == model.ErrFrozenWrite {
+				frozenErrs++
+				return
+			}
+			otherErrs = append(otherErrs, err.Error())
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if wins != 1 {
+		t.Fatalf("expected exactly 1 winner, got %d (frozenErrs=%d otherErrs=%v)", wins, frozenErrs, otherErrs)
+	}
+	if frozenErrs != n-1 {
+		t.Fatalf("expected %d ErrFrozenWrite losers, got %d (otherErrs=%v)", n-1, frozenErrs, otherErrs)
+	}
+	if len(otherErrs) != 0 {
+		t.Fatalf("unexpected errors: %v", otherErrs)
+	}
+
+	// 草稿最终必须保持冻结。
+	d, err := svc.GetDraft(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != model.DraftFrozen {
+		t.Fatalf("draft not frozen after concurrent freeze: %s", d.Status)
+	}
+
+	// 版本表只有一行成功版本。
+	vs, err := svc.ListVersions(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vs) != 1 {
+		t.Fatalf("expected exactly 1 persisted version, got %d", len(vs))
+	}
+	if !winVersionIDs[vs[0].ID] {
+		t.Fatalf("persisted version id=%d was not reported by winner", vs[0].ID)
+	}
+
+	// 冻结后再次冻结应被拒绝（幂等保护）。
+	if _, err := svc.FreezeVersion(draft.ID, "v2"); err != model.ErrFrozenWrite {
+		t.Fatalf("expected ErrFrozenWrite on re-freeze, got %v", err)
 	}
 }

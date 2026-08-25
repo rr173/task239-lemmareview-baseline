@@ -6,14 +6,12 @@ import (
 )
 
 // FreezeVersion 冻结证明版本：绑定引理指纹与图快照，草稿置 frozen。
+//
+// 冻结通过 store.ClaimFreeze 在单个事务内完成条件状态翻转与版本插入，是并发冻结的
+// 唯一同步点：多个并发调用中恰好一个赢家成功提交版本，其余返回 ErrFrozenWrite。
+// 这避免了原先 IsDraftFrozen→CreateVersion→UpdateDraftStatus 之间的 check-then-act
+// 竞态导致的多个成功版本。
 func (s *Service) FreezeVersion(draftID int64, name string) (*model.ProofVersion, error) {
-	frozen, err := s.store.IsDraftFrozen(draftID)
-	if err != nil {
-		return nil, err
-	}
-	if frozen {
-		return nil, model.ErrFrozenWrite
-	}
 	lemmas, err := s.store.ListLemmas(draftID)
 	if err != nil {
 		return nil, err
@@ -28,11 +26,8 @@ func (s *Service) FreezeVersion(draftID int64, name string) (*model.ProofVersion
 	}
 	v := version.Freeze(name, lemmas, steps, edges)
 	v.DraftID = draftID
-	created, err := s.store.CreateVersion(v)
+	created, err := s.store.ClaimFreeze(v)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.store.UpdateDraftStatus(draftID, model.DraftFrozen); err != nil {
 		return nil, err
 	}
 	return created, nil
