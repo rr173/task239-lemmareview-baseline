@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 func (s *Server) handleVersions(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +60,7 @@ func (s *Server) handleVersionByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleVersionShare(w http.ResponseWriter, r *http.Request) {
-	vid, err := parseLastID(r.URL.Path)
+	vid, err := parseVersionActionID(r.URL.Path)
 	if err != nil {
 		writeError(w, 400, err)
 		return
@@ -75,7 +77,7 @@ func (s *Server) handleVersionShare(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleVersionSupersede(w http.ResponseWriter, r *http.Request) {
-	vid, err := parseLastID(r.URL.Path)
+	vid, err := parseVersionActionID(r.URL.Path)
 	if err != nil {
 		writeError(w, 400, err)
 		return
@@ -89,6 +91,14 @@ func (s *Server) handleVersionSupersede(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "superseded"})
+}
+
+func parseVersionActionID(path string) (int64, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 4 {
+		return 0, fmt.Errorf("bad version action path")
+	}
+	return strconv.ParseInt(parts[len(parts)-2], 10, 64)
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
