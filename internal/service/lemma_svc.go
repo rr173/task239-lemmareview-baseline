@@ -78,15 +78,7 @@ func (s *Service) ReplaceLemma(oldID, newDraftID int64, newName, newStatement st
 	if newDraftID != old.DraftID || newName == "" {
 		return nil, model.ErrInvalidStatus
 	}
-	if err := s.store.UpdateLemmaStatus(oldID, model.LemmaReplaced); err != nil {
-		return nil, err
-	}
-	return s.store.CreateLemma(&model.Lemma{
-		DraftID:   newDraftID,
-		Name:      newName,
-		Statement: newStatement,
-		Status:    model.LemmaAvailable,
-	})
+	return s.store.ReplaceLemma(oldID, newName, newStatement)
 }
 
 // AddPremise 新增前提依赖：校验非自指、已知引理、顺序合法。

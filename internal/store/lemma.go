@@ -76,6 +76,43 @@ func (s *Store) UpdateLemmaStatus(id int64, status model.LemmaStatus) error {
 	return nil
 }
 
+// ReplaceLemma 原子替换引理，并把证明图中的前提边迁移到新引理。
+func (s *Store) ReplaceLemma(oldID int64, name, statement string) (*model.Lemma, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin lemma replacement: %w", err)
+	}
+	var draftID int64
+	if err := tx.QueryRow(`SELECT draft_id FROM lemmas WHERE id=?`, oldID).Scan(&draftID); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE lemmas SET status=? WHERE id=?`, string(model.LemmaReplaced), oldID); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+	res, err := tx.Exec(
+		`INSERT INTO lemmas(draft_id,name,statement,status,created_at) VALUES(?,?,?,?,?)`,
+		draftID, name, statement, string(model.LemmaAvailable), nowStr())
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, fmtErrInsertLemma(err)
+	}
+	newID, err := res.LastInsertId()
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE premise_edges SET from_id=? WHERE draft_id=? AND from_kind='lemma' AND from_id=?`, newID, draftID, oldID); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit lemma replacement: %w", err)
+	}
+	return s.GetLemma(newID)
+}
+
 func fmtErrInsertLemma(err error) error {
 	return fmt.Errorf("insert lemma: %w", err)
 }

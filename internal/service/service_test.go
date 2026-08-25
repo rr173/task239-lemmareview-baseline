@@ -179,3 +179,38 @@ func TestDraftStatusCannotLeaveFrozenThroughService(t *testing.T) {
 		t.Fatalf("expected frozen write rejection, got %v", err)
 	}
 }
+
+func TestReplaceLemmaMigratesPremiseEdges(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	draft, err := svc.CreateDraft("replace", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := svc.ImportSteps(draft.ID, "1 depends on lemma => result")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldLemma, err := svc.CreateLemma(draft.ID, "old", "old statement")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddPremise(draft.ID, oldLemma.ID, "lemma", steps[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	newLemma, err := svc.ReplaceLemma(oldLemma.ID, draft.ID, "new", "new statement")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edges, err := svc.Store().ListEdges(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edges) != 1 || edges[0].FromID != newLemma.ID {
+		t.Fatalf("premise edge was not migrated: %#v", edges)
+	}
+	res, err := svc.Analyze(draft.ID)
+	if err != nil || len(res.CoveredSteps) != 1 {
+		t.Fatalf("replacement did not preserve coverage: result=%#v err=%v", res, err)
+	}
+}
