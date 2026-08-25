@@ -214,3 +214,47 @@ func TestReplaceLemmaMigratesPremiseEdges(t *testing.T) {
 		t.Fatalf("replacement did not preserve coverage: result=%#v err=%v", res, err)
 	}
 }
+
+// 冻结但尚未共享的版本处于评审生命周期内，不得被直接替代；
+// 必须先发布为 shared 后才允许 supersede，否则会跳过 shared 环节。
+func TestSupersedeRejectsFrozenUnsharedVersion(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+
+	draft, err := svc.CreateDraft("lifecycle", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ImportSteps(draft.ID, "1 A => A"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := svc.FreezeVersion(draft.ID, "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 刚冻结、尚未共享：替代被拒，版本仍为 frozen
+	if err := svc.SupersedeVersion(v.ID); err != model.ErrInvalidStatus {
+		t.Fatalf("expected unshared frozen version supersede rejection, got %v", err)
+	}
+	cur, err := svc.Store().GetVersion(v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur.Status != model.VersionFrozen {
+		t.Fatalf("unshared frozen version was wrongly superseded: status=%s", cur.Status)
+	}
+	// 发布为 shared 后，替代成功
+	if err := svc.PublishShared(v.ID); err != nil {
+		t.Fatalf("publish shared: %v", err)
+	}
+	if err := svc.SupersedeVersion(v.ID); err != nil {
+		t.Fatalf("supersede shared version: %v", err)
+	}
+	final, err := svc.Store().GetVersion(v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Status != model.VersionSuperseded {
+		t.Fatalf("expected superseded, got %s", final.Status)
+	}
+}

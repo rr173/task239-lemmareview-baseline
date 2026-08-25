@@ -51,7 +51,16 @@ func (s *Service) PublishShared(versionID int64) error {
 }
 
 // SupersedeVersion 将版本标记为被替代（新版本产生后旧版本失效）。
+// 仅允许替代已共享（shared）的版本：未共享的冻结版本仍处于评审生命周期内，
+// 不得跳过 shared 状态直接替代，否则会绕过复核分发环节。
 func (s *Service) SupersedeVersion(versionID int64) error {
+	v, err := s.store.GetVersion(versionID)
+	if err != nil {
+		return err
+	}
+	if v.Status != model.VersionShared {
+		return model.ErrInvalidStatus
+	}
 	return s.store.UpdateVersionStatus(versionID, model.VersionSuperseded)
 }
 

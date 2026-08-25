@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"task239-lemmareview/internal/model"
 )
 
 func (s *Server) handleVersions(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +86,7 @@ func (s *Server) handleVersionSupersede(w http.ResponseWriter, r *http.Request) 
 		writeError(w, 405, fmt.Errorf("method not allowed"))
 		return
 	}
-	if err := s.svc.Store().UpdateVersionStatus(vid, model.VersionSuperseded); err != nil {
+	if err := s.svc.SupersedeVersion(vid); err != nil {
 		writeError(w, 400, err)
 		return
 	}
