@@ -25,9 +25,15 @@ func (s *Service) ListDrafts() ([]*model.Draft, error) {
 }
 
 // UpdateDraftStatus 按草稿状态机更新状态，冻结后不允许回退。
+// 已冻结的草稿不得离开 frozen 状态（仅允许保持 frozen 的无操作写入），
+// 否则调用方可经状态更新接口重新打开冻结草稿、绕过各写入用例的冻结保护。
 func (s *Service) UpdateDraftStatus(id int64, next model.DraftStatus) error {
-	if _, err := s.store.GetDraft(id); err != nil {
+	d, err := s.store.GetDraft(id)
+	if err != nil {
 		return err
+	}
+	if d.Status == model.DraftFrozen && next != model.DraftFrozen {
+		return model.ErrFrozenWrite
 	}
 	return s.store.UpdateDraftStatus(id, next)
 }

@@ -59,7 +59,7 @@ func (s *Server) handleDraftByID(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, err)
 			return
 		}
-		if err := s.svc.Store().UpdateDraftStatus(id, model.DraftStatus(body.Status)); err != nil {
+		if err := s.svc.UpdateDraftStatus(id, model.DraftStatus(body.Status)); err != nil {
 			writeError(w, 400, err)
 			return
 		}

@@ -85,3 +85,41 @@ func TestLemmaStatusEndpointMakesCandidateAvailable(t *testing.T) {
 		t.Fatalf("lemma was not made available: %#v err=%v", updated, err)
 	}
 }
+
+// TestFrozenDraftCannotBeReopenedViaStatusEndpoint 复现：冻结草稿经
+// PUT /api/drafts/{id} 状态接口改回 editing 后，应仍被拒绝新增步骤。
+func TestFrozenDraftCannotBeReopenedViaStatusEndpoint(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "frozen.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	svc := service.New(st)
+	draft, err := svc.CreateDraft("frozen-reopen", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ImportSteps(draft.ID, "1 A => A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.FreezeVersion(draft.ID, "v1"); err != nil {
+		t.Fatal(err)
+	}
+	h := New(svc, ":0", "").Handler()
+
+	// 状态接口尝试把冻结草稿改回 editing：必须失败（保持 frozen）。
+	req := httptest.NewRequest(http.MethodPut, "/api/drafts/1", strings.NewReader(`{"status":"editing"}`))
+	resp := httptest.NewRecorder()
+	h.ServeHTTP(resp, req)
+	if resp.Code == http.StatusOK {
+		t.Fatalf("expected frozen draft status change to be rejected, got %d %s", resp.Code, resp.Body.String())
+	}
+	if d, err := svc.GetDraft(draft.ID); err != nil || d.Status != "frozen" {
+		t.Fatalf("draft left frozen state: %#v err=%v", d, err)
+	}
+
+	// 即便有调用方绕过，新增步骤仍必须被冻结保护拒绝。
+	if _, err := svc.ImportSteps(draft.ID, "2 B => B"); err == nil {
+		t.Fatal("expected frozen draft to reject new steps after status reopen attempt")
+	}
+}

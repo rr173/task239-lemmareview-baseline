@@ -149,11 +149,9 @@ func ValidateStepOrder(dependentSeq, requiredSeq int) error {
 }
 
 // ValidDraftTransition 判断草稿状态机是否允许从 current 进入 next。
+// frozen 为终态：仅允许 frozen→frozen 的无操作迁移，禁止任何离开 frozen 的回退。
 func ValidDraftTransition(current, next DraftStatus) bool {
 	if current == next {
-		return true
-	}
-	if current == DraftFrozen {
 		return true
 	}
 	switch current {
@@ -166,6 +164,8 @@ func ValidDraftTransition(current, next DraftStatus) bool {
 	case DraftPublishable:
 		return next == DraftReviewing || next == DraftGap || next == DraftFrozen
 	default:
+		// DraftFrozen 及未知状态落入此分支：current != next 时一律拒绝，
+		// 即冻结草稿无法被改回 editing/reviewing/gap/publishable。
 		return false
 	}
 }
