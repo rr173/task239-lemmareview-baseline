@@ -68,7 +68,9 @@ func (s *Server) handleReplaceLemma(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err)
 		return
 	}
-	l, err := s.svc.Store().ReplaceLemma(lid, body.NewName, body.NewStatement)
+	// 经由 service 层而非直接调用 store：ReplaceLemma 在 store 写入前会校验
+	// 草稿是否冻结，冻结时拒绝替换并保持旧引理状态不变。
+	l, err := s.svc.ReplaceLemma(lid, body.NewDraftID, body.NewName, body.NewStatement)
 	if err != nil {
 		writeError(w, 400, err)
 		return

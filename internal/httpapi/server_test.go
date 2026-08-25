@@ -58,6 +58,42 @@ func TestReadHandlersExposeGraphAndLemma(t *testing.T) {
 	}
 }
 
+func TestReplaceLemmaEndpointRejectedOnFrozenDraft(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "frozen-replace.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	svc := service.New(st)
+	draft, err := svc.CreateDraft("frozen-replace", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lemma, err := svc.CreateLemma(draft.ID, "L", "statement")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.FreezeVersion(draft.ID, "v1"); err != nil {
+		t.Fatal(err)
+	}
+	h := New(svc, ":0", "").Handler()
+	body := strings.NewReader(`{"new_draft_id":1,"new_name":"L2","new_statement":"new"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/lemmas/1/replace", body)
+	resp := httptest.NewRecorder()
+	h.ServeHTTP(resp, req)
+	if resp.Code == http.StatusCreated {
+		t.Fatalf("frozen draft accepted lemma replacement: %s", resp.Body.String())
+	}
+	// 旧引理状态必须保持不变（未被改写为 replaced）。
+	unchanged, err := svc.GetLemma(draft.ID, lemma.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.Status == "replaced" {
+		t.Fatalf("frozen draft left old lemma mutated: %#v", unchanged)
+	}
+}
+
 func TestLemmaStatusEndpointMakesCandidateAvailable(t *testing.T) {
 	st, err := store.New(filepath.Join(t.TempDir(), "status.db"))
 	if err != nil {
