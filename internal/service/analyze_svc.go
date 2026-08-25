@@ -37,6 +37,15 @@ func (s *Service) Analyze(draftID int64) (*model.CoverageResult, error) {
 	analyzer := cover.New(steps, edges, lemmas)
 	res := analyzer.Analyze(cyclicSet)
 	res.Cycles = cycles
+	exms, err := s.store.ListExemptions(draftID)
+	if err != nil {
+		return nil, err
+	}
+	engine := adjudicate.New(exms)
+	stillMissing, exempted := engine.ApplyExemptions(res.MissingSteps, cover.StepPremiseLemmas(edges))
+	res.MissingSteps = stillMissing
+	res.ExemptedSteps = exempted
+	res.CoveredSteps = append(res.CoveredSteps, exempted...)
 
 	// 同步步骤状态
 	for _, sid := range res.CoveredSteps {
@@ -56,11 +65,6 @@ func (s *Service) Analyze(draftID int64) (*model.CoverageResult, error) {
 		_ = s.store.UpdateDraftStatus(draftID, model.DraftPublishable)
 	}
 
-	// 关联豁免信息（作为结果补充）
-	exms, _ := s.store.ListExemptions(draftID)
-	eng := adjudicate.New(exms)
-	res.AvailablePremises = append(res.AvailablePremises, 0)[:0] // 保留，覆盖分析已填
-	_ = eng
 	return res, nil
 }
 
@@ -73,9 +77,18 @@ func (s *Service) AddExemption(draftID, stepID, lemmaID int64, reason string) er
 	if frozen {
 		return model.ErrFrozenWrite
 	}
-	_, err = s.store.GetStep(stepID)
+	step, err := s.store.GetStep(stepID)
 	if err != nil {
 		return err
+	}
+	if step.DraftID != draftID {
+		return model.ErrStepNotFound
+	}
+	if lemmaID != 0 {
+		lemma, err := s.store.GetLemma(lemmaID)
+		if err != nil || lemma.DraftID != draftID {
+			return model.ErrUnknownLemma
+		}
 	}
 	return s.store.CreateExemption(&model.Exemption{
 		DraftID: draftID,
@@ -88,4 +101,16 @@ func (s *Service) AddExemption(draftID, stepID, lemmaID int64, reason string) er
 // ListExemptions 列出豁免。
 func (s *Service) ListExemptions(draftID int64) ([]*model.Exemption, error) {
 	return s.store.ListExemptions(draftID)
+}
+
+// GetExemption 查询单条假设豁免，并确保它属于指定草稿。
+func (s *Service) GetExemption(draftID, exemptionID int64) (*model.Exemption, error) {
+	ex, err := s.store.GetExemption(exemptionID)
+	if err != nil {
+		return nil, err
+	}
+	if ex.DraftID != draftID {
+		return nil, model.ErrStepNotFound
+	}
+	return ex, nil
 }

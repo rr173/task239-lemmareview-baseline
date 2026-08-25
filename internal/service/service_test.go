@@ -108,3 +108,33 @@ func TestFrozenDraftRejectsWrites(t *testing.T) {
 		t.Fatal("expected frozen draft write rejection")
 	}
 }
+
+func TestAnalyzeAppliesCompleteLemmaExemption(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	draft, err := svc.CreateDraft("exemption", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := svc.ImportSteps(draft.ID, "1 needs an external assumption => result")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lemma, err := svc.CreateLemma(draft.ID, "external", "assumption")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddPremise(draft.ID, lemma.ID, "lemma", steps[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddExemption(draft.ID, steps[0].ID, lemma.ID, "accepted by the author"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Analyze(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.ExemptedSteps) != 1 || len(res.MissingSteps) != 0 {
+		t.Fatalf("expected one exempted step and no missing steps, got exempted=%v missing=%v", res.ExemptedSteps, res.MissingSteps)
+	}
+}

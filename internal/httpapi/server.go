@@ -31,18 +31,22 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
 	// 草稿
-	mux.HandleFunc("/api/drafts", s.handleDrafts)       // GET 列表 / POST 新建
-	mux.HandleFunc("/api/drafts/", s.handleDraftByID)   // GET / PUT 状态
+	mux.HandleFunc("/api/drafts", s.handleDrafts)     // GET 列表 / POST 新建
+	mux.HandleFunc("/api/drafts/", s.handleDraftByID) // GET / PUT 状态
 	// 步骤
-	mux.HandleFunc("/api/drafts/{id}/steps", s.handleSteps)         // GET 列表 / POST 文本导入
+	mux.HandleFunc("/api/drafts/{id}/steps", s.handleSteps)          // GET 列表 / POST 文本导入
 	mux.HandleFunc("/api/drafts/{id}/steps/{sid}", s.handleStepByID) // GET
 	// 引理
-	mux.HandleFunc("/api/drafts/{id}/lemmas", s.handleLemmas)          // GET / POST
-	mux.HandleFunc("/api/lemmas/{lid}/replace", s.handleReplaceLemma)  // POST
+	mux.HandleFunc("/api/drafts/{id}/lemmas", s.handleLemmas)         // GET / POST
+	mux.HandleFunc("/api/lemmas/{lid}/replace", s.handleReplaceLemma) // POST
 	// 前提边
 	mux.HandleFunc("/api/drafts/{id}/premises", s.handlePremises) // GET / POST
 	// 覆盖分析
-	mux.HandleFunc("/api/drafts/{id}/analyze", s.handleAnalyze) // POST
+	mux.HandleFunc("/api/drafts/{id}/analyze", s.handleAnalyze)                   // POST
+	mux.HandleFunc("/api/drafts/{id}/coverage", s.handleCoverage)                 // GET 当前覆盖结果
+	mux.HandleFunc("/api/drafts/{id}/graph", s.handleGraph)                       // GET 步骤与依赖图
+	mux.HandleFunc("/api/drafts/{id}/steps/{sid}/premises", s.handleStepPremises) // GET 步骤前提
+	mux.HandleFunc("/api/drafts/{id}/lemmas/{lid}", s.handleLemmaByID)            // GET 单条引理
 	// 豁免
 	mux.HandleFunc("/api/drafts/{id}/exemptions", s.handleExemptions) // GET / POST
 	// 版本

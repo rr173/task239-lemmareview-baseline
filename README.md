@@ -10,8 +10,9 @@
 3. 登记引理并标记为可用。
 4. 声明前提依赖边（步骤依赖引理或前置步骤结论）。
 5. 执行覆盖分析：传播前提、标记覆盖/缺失/循环。
-6. 记录假设豁免、替换引理。
-7. 冻结版本（绑定引理指纹与图快照）。
+6. 记录假设豁免；完整豁免的缺失步骤会标记为豁免覆盖。
+7. 从只读入口查看覆盖结果、依赖图、步骤前提和引理详情。
+8. 替换引理并冻结版本（绑定引理指纹与图快照）。
 
 ## 实体与状态
 
@@ -39,10 +40,14 @@ CGO_ENABLED=0 GOTOOLCHAIN=local go test ./...
 | 草稿查询/改状态 | `GET/PUT /api/drafts/{id}` | service.GetDraft → store |
 | 步骤列表/导入 | `GET/POST /api/drafts/{id}/steps` | service.ImportSteps → parse+store |
 | 步骤查询 | `GET /api/drafts/{id}/steps/{sid}` | store.GetStep |
+| 步骤前提查询 | `GET /api/drafts/{id}/steps/{sid}/premises` | service.ListStepPremises → store |
 | 引理列表/新建 | `GET/POST /api/drafts/{id}/lemmas` | service.CreateLemma → store |
+| 引理详情 | `GET /api/drafts/{id}/lemmas/{lid}` | service.GetLemma → store |
 | 引理替换 | `POST /api/lemmas/{lid}/replace` | service.ReplaceLemma → store |
 | 前提边列表/新增 | `GET/POST /api/drafts/{id}/premises` | service.AddPremise → store |
 | 覆盖分析 | `POST /api/drafts/{id}/analyze` | service.Analyze → graph+cover |
+| 覆盖结果查询 | `GET /api/drafts/{id}/coverage` | service.Analyze → adjudicate |
+| 依赖图查询 | `GET /api/drafts/{id}/graph` | service/store → steps+edges |
 | 豁免列表/新增 | `GET/POST /api/drafts/{id}/exemptions` | service.AddExemption → store |
 | 版本列表/冻结 | `GET/POST /api/drafts/{id}/versions` | service.FreezeVersion → version+store |
 | 版本查询 | `GET /api/versions/{vid}` | store.GetVersion |
@@ -54,7 +59,9 @@ CGO_ENABLED=0 GOTOOLCHAIN=local go test ./...
 ## 关键不变量
 
 - 前提边禁止自指（步骤不能依赖自身结论）。
+- 引理边不进入步骤依赖图，避免引理 ID 与步骤 ID 数值相同时制造伪循环。
 - 步骤顺序约束：依赖方 seq 必须严格大于被依赖方 seq。
+- 只有对某步骤的全部引理前提都已记录豁免，该步骤才会从缺失集合移出并进入 `exempted_steps`。
 - 冻结草稿/版本不可写入（拒绝 ImportSteps、AddPremise、FreezeVersion）。
 - 版本冻结时绑定引理集合 SHA-256 指纹与图快照，不可变可追溯。
 

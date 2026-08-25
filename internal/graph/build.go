@@ -26,11 +26,12 @@ func Build(steps []*model.Step, edges []*model.PremiseEdge) *DepGraph {
 		g.nodes[s.ID] = true
 	}
 	for _, e := range edges {
+		if e.FromKind != "step" {
+			continue
+		}
 		// from 为被依赖方（前提来源），to 为依赖方（步骤本身）
 		from := e.FromID
-		if e.FromKind == "step" {
-			g.nodes[from] = true
-		}
+		g.nodes[from] = true
 		to := e.ToStepID
 		if g.adj[from] == nil {
 			g.adj[from] = make(map[int64]bool)

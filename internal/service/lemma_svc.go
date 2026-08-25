@@ -31,6 +31,18 @@ func (s *Service) ListLemmas(draftID int64) ([]*model.Lemma, error) {
 	return s.store.ListLemmas(draftID)
 }
 
+// GetLemma 查询草稿中的单条引理。
+func (s *Service) GetLemma(draftID, lemmaID int64) (*model.Lemma, error) {
+	lemma, err := s.store.GetLemma(lemmaID)
+	if err != nil {
+		return nil, err
+	}
+	if lemma.DraftID != draftID {
+		return nil, model.ErrLemmaNotFound
+	}
+	return lemma, nil
+}
+
 // ReplaceLemma 替换引理：标记旧引理为 replaced，新引理为 available。
 func (s *Service) ReplaceLemma(oldID, newDraftID int64, newName, newStatement string) (*model.Lemma, error) {
 	old, err := s.store.GetLemma(oldID)
@@ -97,10 +109,10 @@ func (s *Service) AddPremise(draftID, fromKindID int64, fromKind string, toStepI
 		return fmt.Errorf("invalid from_kind %q", fromKind)
 	}
 	return s.store.CreateEdge(&model.PremiseEdge{
-		DraftID:   draftID,
-		FromKind:  fromKind,
-		FromID:    fromKindID,
-		ToStepID:  toStepID,
-		Required:  required,
+		DraftID:  draftID,
+		FromKind: fromKind,
+		FromID:   fromKindID,
+		ToStepID: toStepID,
+		Required: required,
 	})
 }
