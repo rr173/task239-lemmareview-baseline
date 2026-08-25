@@ -77,7 +77,8 @@ func (a *Analyzer) Analyze(cyclic map[int64]bool) *model.CoverageResult {
 				} else {
 					ok = established[p.FromID]
 				}
-				if !ok {
+				// 仅必修前提未满足才阻断覆盖；可选前提未满足不影响该步骤成立。
+				if !ok && p.Required {
 					allMet = false
 					break
 				}

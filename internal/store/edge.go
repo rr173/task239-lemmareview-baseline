@@ -36,7 +36,7 @@ func (s *Store) ListEdges(draftID int64) ([]*model.PremiseEdge, error) {
 		if err := rows.Scan(&e.ID, &e.DraftID, &e.FromKind, &e.FromID, &e.ToStepID, &req, &ca); err != nil {
 			return nil, err
 		}
-		e.Required = true
+		e.Required = req != 0
 		e.CreatedAt = parseTime(ca)
 		out = append(out, e)
 	}

@@ -64,8 +64,9 @@ func (s *Service) Analyze(draftID int64) (*model.CoverageResult, error) {
 		}
 	}
 
-	// 草稿缺口/可发布状态
-	if len(edges) > 0 || len(res.CyclicSteps) > 0 {
+	// 草稿缺口/可发布状态：仅当残留未豁免的缺失步骤或存在循环时才判为缺口；
+	// 存在前提边本身不应阻断一个已完全覆盖的草稿进入可发布状态。
+	if len(res.MissingSteps) > 0 || len(res.CyclicSteps) > 0 {
 		if err := s.store.UpdateDraftStatus(draftID, model.DraftGap); err != nil {
 			return nil, err
 		}

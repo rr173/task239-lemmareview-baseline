@@ -214,3 +214,95 @@ func TestReplaceLemmaMigratesPremiseEdges(t *testing.T) {
 		t.Fatalf("replacement did not preserve coverage: result=%#v err=%v", res, err)
 	}
 }
+
+// TestAnalyzeOptionalLemmaDoesNotBlockPublishable 锁定端到端修复：步骤仅依赖一个未满足的
+// 「可选」引理前提（引理保持 candidate、未置 available）时，分析应判该步骤为 covered、
+// missing 为空，并把草稿置为 publishable——可选前提不应阻断覆盖或草稿发布。
+// 该用例同时覆盖 Required 字段经 store 写读往返后仍为可选（验证 ListEdges 不再把可选当必修）。
+func TestAnalyzeOptionalLemmaDoesNotBlockPublishable(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	draft, err := svc.CreateDraft("optional-premise", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := svc.ImportSteps(draft.ID, "1 base => A\n2 from A with optional lemma => B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 步骤2 依赖步骤1（必修，已覆盖）+ 一个可选引理前提（引理不置 available，模拟未满足）
+	if err := svc.AddPremise(draft.ID, steps[0].ID, "step", steps[1].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	optionalLemma, err := svc.CreateLemma(draft.ID, "optional", "an optional assumption")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddPremise(draft.ID, optionalLemma.ID, "lemma", steps[1].ID, false); err != nil {
+		t.Fatal(err)
+	}
+	// 验证 store 读回的 Required 仍为可选（往返保真，不应被 ListEdges 改写成必修）
+	edges, err := svc.Store().ListEdges(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range edges {
+		if e.FromKind == "lemma" && e.FromID == optionalLemma.ID && e.Required {
+			t.Fatalf("optional premise edge lost its optional flag after round-trip: %#v", e)
+		}
+	}
+	res, err := svc.Analyze(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.MissingSteps) != 0 {
+		t.Fatalf("optional premise must not yield missing steps: %v", res.MissingSteps)
+	}
+	if len(res.CoveredSteps) != 2 {
+		t.Fatalf("expected both steps covered, got covered=%v", res.CoveredSteps)
+	}
+	got, err := svc.GetDraft(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != model.DraftPublishable {
+		t.Fatalf("expected draft publishable, got status=%s", got.Status)
+	}
+}
+
+// TestAnalyzeRequiredLemmaGapKeepsGap 对照组：同样一个未满足引理前提若为必修，
+// 草稿必须留在 gap 状态，确保修复未放宽必修前提的缺口判定。
+func TestAnalyzeRequiredLemmaGapKeepsGap(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	draft, err := svc.CreateDraft("required-premise", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := svc.ImportSteps(draft.ID, "1 depends on lemma => result")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lemma, err := svc.CreateLemma(draft.ID, "missing", "an unavailable lemma")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 引理保持 candidate（未 available），必修前提未满足
+	if err := svc.AddPremise(draft.ID, lemma.ID, "lemma", steps[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Analyze(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.MissingSteps) != 1 || res.MissingSteps[0] != steps[0].ID {
+		t.Fatalf("required unavailable premise must yield a missing step: missing=%v", res.MissingSteps)
+	}
+	got, err := svc.GetDraft(draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != model.DraftGap {
+		t.Fatalf("expected draft gap, got status=%s", got.Status)
+	}
+}
